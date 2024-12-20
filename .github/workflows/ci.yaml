@@ -15,28 +15,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Check out the postman-publish-action repository
-      - name: Checkout postman-publish-action
-        uses: actions/checkout@v3
-        with:
-          repository: stcalica/postman-publish-action
-          path: ./.github/actions/postman-publish-action
-
-      # List contents for debugging
-      - name: List action contents
-        run: |
-          ls -la ./.github/actions/postman-publish-action/actions/transform-openapi-from-file
-
-      # Convert OpenAPI to Postman Collection
-      - name: Convert OpenAPI to Postman
-        uses: ./.github/actions/postman-publish-action/actions/transform-openapi-from-file
-        id: schema
+      - name: Transform OpenAPI to Postman Collection
+        id: convert
+        uses: stcalica/transform-openapi-from-file@v1.0.0
         with:
           openapi_schema_path: ./v5/openapi.yaml
+          outputFilePath: 'postman-collections-api.json'
+      
 
-      - name: Update Postman Collection
-        uses: ./.github/actions/postman-publish-action/actions/update-collection
-        with:
-          postman_api_key: ${{ secrets.POSTMAN_API_KEY }}
-          collection_id: "15933045-3ddb652d-b54c-4d7e-abd4-0bccee2cc2fe"
-          collection_data: ${{ steps.schema.outputs.postman_collection }}
+
+      # # Check out the postman-publish-action repository
+      # - name: Checkout postman-publish-action
+      #   uses: actions/checkout@v3
+      #   with:
+      #     repository: stcalica/postman-publish-action
+      #     path: ./.github/actions/postman-publish-action
+
+      # # List contents for debugging
+      # - name: List action contents
+      #   run: |
+      #     ls -la ./.github/actions/postman-publish-action/actions/transform-openapi-from-file
+
+      # # Convert OpenAPI to Postman Collection
+      # - name: Convert OpenAPI to Postman
+      #   uses: ./.github/actions/postman-publish-action/actions/transform-openapi-from-file
+      #   id: schema
+      #   with:
+      #     openapi_schema_path: ./v5/openapi.yaml
+
+      # - name: Update Postman Collection
+      #   uses: ./.github/actions/postman-publish-action/actions/update-collection
+      #   with:
+      #     postman_api_key: ${{ secrets.POSTMAN_API_KEY }}
+      #     collection_id: "15933045-3ddb652d-b54c-4d7e-abd4-0bccee2cc2fe"
+      #     collection_data: ${{ steps.schema.outputs.postman_collection }}
