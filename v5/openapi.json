@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "version": "5.14.0",
+    "version": "5.14.1",
     "title": "Pinterest REST API",
     "description": "Pinterest's REST API",
     "contact": {
