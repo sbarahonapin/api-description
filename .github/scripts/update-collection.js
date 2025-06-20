@@ -17,16 +17,16 @@ async function versionCollection() {
 
     // Always find the "latest" collection by name, not by UID
     // This ensures we always work with the current "latest" regardless of UID changes
-    let currentCollection = collections.find(c => c.name === 'Pinterest REST API latest');
+    let currentCollection = collections.find(c => c.name === 'Pinterest REST API (latest)');
     
     // Fallback: if no "latest" exists, use COLLECTION_UID (for first-time setup)
     if (!currentCollection && process.env.COLLECTION_UID) {
       currentCollection = collections.find(c => c.uid === process.env.COLLECTION_UID);
-      console.log('No "Pinterest REST API latest" collection found, using COLLECTION_UID as starting point');
+      console.log('No "Pinterest REST API (latest)" collection found, using COLLECTION_UID as starting point');
     }
     
     if (!currentCollection) {
-      throw new Error('Could not find "Pinterest REST API latest" collection or collection with COLLECTION_UID');
+      throw new Error('Could not find "Pinterest REST API (latest)" collection or collection with COLLECTION_UID');
     }
     console.log('Current collection:', currentCollection.name, '(UID:', currentCollection.uid + ')');
 
@@ -82,7 +82,7 @@ async function versionCollection() {
     if (!newCollectionData.info) {
       newCollectionData.info = {};
     }
-    newCollectionData.info.name = 'Pinterest REST API latest';
+    newCollectionData.info.name = 'Pinterest REST API (latest)';
     
     // Ensure required schema property
     if (!newCollectionData.info.schema) {
@@ -112,10 +112,10 @@ async function versionCollection() {
       data: { collection: newCollectionData }
     });
 
-    console.log('Created new "Pinterest REST API latest" collection');
+    console.log('Created new "Pinterest REST API (latest)" collection');
     console.log('New collection UID:', createResponse.data.collection.uid);
-    console.log('✅ Process complete! The "Pinterest REST API latest" collection is now ready for future updates.');
-    console.log('Note: COLLECTION_UID secret can remain unchanged - script will always find "Pinterest REST API latest" by name.');
+    console.log('✅ Process complete! The "Pinterest REST API (latest)" collection is now ready for future updates.');
+    console.log('Note: COLLECTION_UID secret can remain unchanged - script will always find "Pinterest REST API (latest)" by name.');
     
   } catch (error) {
     console.error('Error:', error.response?.data || error.message);

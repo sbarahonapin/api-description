@@ -16,13 +16,13 @@ async function backupCollection() {
           headers: { 'X-Api-Key': process.env.POSTMAN_API_KEY }
         });
         
-        const latestCollection = collectionsResponse.data.collections.find(c => c.name === 'latest');
+        const latestCollection = collectionsResponse.data.collections.find(c => c.name === 'Pinterest REST API (latest)');
         if (latestCollection) {
           collectionUid = latestCollection.uid;
-          collectionName = 'latest';
-          console.log('Found "latest" collection, using UID:', collectionUid);
+          collectionName = 'Pinterest REST API (latest)';
+          console.log('Found "Pinterest REST API (latest)" collection, using UID:', collectionUid);
         } else {
-          console.log('No "latest" collection found, using COLLECTION_UID:', collectionUid);
+          console.log('No "Pinterest REST API (latest)" collection found, using COLLECTION_UID:', collectionUid);
         }
       } catch (error) {
         console.log('Could not fetch collections list, using COLLECTION_UID:', collectionUid);
