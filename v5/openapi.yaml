@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 5.14.0
+  version: 5.15.0
   title: Pinterest REST API
   description: Pinterest's REST API
   contact:
