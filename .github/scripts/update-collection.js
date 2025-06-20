@@ -66,8 +66,41 @@ async function versionCollection() {
     console.log('Renamed current collection to:', nextVersionName);
 
     // Create new "Pinterest REST API latest" collection
-    const newCollectionData = JSON.parse(fs.readFileSync('./postman/collection.json'));
+    console.log('Reading collection file: ./postman/collection.json');
+    const fileContent = fs.readFileSync('./postman/collection.json', 'utf8');
+    console.log('File size:', fileContent.length, 'bytes');
+    
+    const newCollectionData = JSON.parse(fileContent);
+    console.log('Original collection structure:', {
+      hasInfo: !!newCollectionData.info,
+      hasSchema: !!newCollectionData.info?.schema,
+      hasItems: !!newCollectionData.item,
+      topLevelKeys: Object.keys(newCollectionData)
+    });
+    
+    // Ensure proper Postman collection structure
+    if (!newCollectionData.info) {
+      newCollectionData.info = {};
+    }
     newCollectionData.info.name = 'Pinterest REST API latest';
+    
+    // Ensure required schema property
+    if (!newCollectionData.info.schema) {
+      newCollectionData.info.schema = 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json';
+    }
+    
+    // Ensure required item property (array of requests/folders)
+    if (!newCollectionData.item) {
+      newCollectionData.item = [];
+    }
+    
+    console.log('Final collection structure:', {
+      hasInfo: !!newCollectionData.info,
+      hasSchema: !!newCollectionData.info.schema,
+      hasItems: !!newCollectionData.item,
+      itemCount: newCollectionData.item?.length || 0,
+      name: newCollectionData.info.name
+    });
     
     const createResponse = await axios({
       method: 'post',
