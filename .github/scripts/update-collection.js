@@ -1,121 +1,157 @@
 const axios = require('axios');
-const fs = require('fs');
+const fs = require('fs').promises;
 
-async function versionCollection() {
+const POSTMAN_API_KEY = process.env.POSTMAN_API_KEY;
+const COLLECTION_UID = process.env.COLLECTION_UID;
+const POSTMAN_API_BASE = 'https://api.getpostman.com';
+
+async function getCollections() {
+  try {
+    const response = await axios.get(`${POSTMAN_API_BASE}/collections`, {
+      headers: {
+        'X-API-Key': POSTMAN_API_KEY
+      }
+    });
+    return response.data.collections;
+  } catch (error) {
+    console.error('Error fetching collections:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+async function updateCollection(uid, updateData) {
+  try {
+    const response = await axios.put(`${POSTMAN_API_BASE}/collections/${uid}`, {
+      collection: updateData
+    }, {
+      headers: {
+        'X-API-Key': POSTMAN_API_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
+    return response.data.collection;
+  } catch (error) {
+    console.error('Error updating collection:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+async function createCollection(collectionData) {
+  try {
+    const response = await axios.post(`${POSTMAN_API_BASE}/collections`, {
+      collection: collectionData
+    }, {
+      headers: {
+        'X-API-Key': POSTMAN_API_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
+    return response.data.collection;
+  } catch (error) {
+    console.error('Error creating collection:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+function extractVersion(name) {
+  const match = name.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (match) {
+    return {
+      major: parseInt(match[1]),
+      minor: parseInt(match[2]),
+      patch: parseInt(match[3])
+    };
+  }
+  return null;
+}
+
+function getNextVersion(collections) {
+  let highestVersion = null;
+  
+  collections.forEach(collection => {
+    const version = extractVersion(collection.name);
+    if (version) {
+      const versionNumber = version.major * 10000 + version.minor * 100 + version.patch;
+      const highestNumber = highestVersion ? 
+        highestVersion.major * 10000 + highestVersion.minor * 100 + highestVersion.patch : 0;
+      
+      if (versionNumber > highestNumber) {
+        highestVersion = version;
+      }
+    }
+  });
+  
+  // If no version found, start with 1.0.0
+  if (!highestVersion) {
+    return '1.0.0';
+  }
+  
+  // Increment patch version
+  highestVersion.patch += 1;
+  
+  return `${highestVersion.major}.${highestVersion.minor}.${highestVersion.patch}`;
+}
+
+async function main() {
   try {
     console.log('Starting collection versioning process...');
     
     // Get all collections
-    const collectionsResponse = await axios({
-      method: 'get',
-      url: 'https://api.getpostman.com/collections',
-      headers: { 'X-Api-Key': process.env.POSTMAN_API_KEY }
-    });
-
-    const collections = collectionsResponse.data.collections;
+    const collections = await getCollections();
     console.log('Found collections:', collections.map(c => c.name));
-
-    // Always find the "latest" collection by name, not by UID
-    // This ensures we always work with the current "latest" regardless of UID changes
-    let currentCollection = collections.find(c => c.name === 'Pinterest REST API (latest)');
     
-    // Fallback: if no "latest" exists, use COLLECTION_UID (for first-time setup)
-    if (!currentCollection && process.env.COLLECTION_UID) {
-      currentCollection = collections.find(c => c.uid === process.env.COLLECTION_UID);
-      console.log('No "Pinterest REST API (latest)" collection found, using COLLECTION_UID as starting point');
+    // Find the current "latest" collection
+    const latestCollection = collections.find(c => c.uid === COLLECTION_UID);
+    if (!latestCollection) {
+      throw new Error(`Collection with UID ${COLLECTION_UID} not found`);
     }
     
-    if (!currentCollection) {
-      throw new Error('Could not find "Pinterest REST API (latest)" collection or collection with COLLECTION_UID');
-    }
-    console.log('Current collection:', currentCollection.name, '(UID:', currentCollection.uid + ')');
-
-    // Find highest version number from existing Pinterest REST API collections
-    let highestVersion = { major: 5, minor: 14, patch: 0 }; // Start from 5.14.0 as example
-    collections.forEach(collection => {
-      // Look for "Pinterest REST API X.Y.Z" pattern
-      const match = collection.name.match(/^Pinterest REST API (\d+)\.(\d+)\.(\d+)$/);
-      if (match) {
-        const version = {
-          major: parseInt(match[1]),
-          minor: parseInt(match[2]), 
-          patch: parseInt(match[3])
-        };
-        if (version.major > highestVersion.major || 
-            (version.major === highestVersion.major && version.minor > highestVersion.minor)) {
-          highestVersion = version;
-        }
+    console.log(`Current collection: ${latestCollection.name} (UID: ${COLLECTION_UID})`);
+    
+    // Calculate next version
+    const nextVersion = getNextVersion(collections);
+    const versionedName = `Pinterest REST API ${nextVersion}`;
+    
+    console.log(`Next version: ${versionedName}`);
+    
+    // Step 1: Rename the existing "latest" collection to versioned name
+    console.log(`Renaming "${latestCollection.name}" to "${versionedName}"...`);
+    await updateCollection(COLLECTION_UID, {
+      info: {
+        name: versionedName
       }
     });
-
-    // Calculate next version (increment minor)
-    const nextVersion = `${highestVersion.major}.${highestVersion.minor + 1}.${highestVersion.patch}`;
-    const nextVersionName = `Pinterest REST API ${nextVersion}`;
-    console.log('Next version:', nextVersionName);
-
-    // Rename current collection to version number
-    await axios({
-      method: 'put',
-      url: `https://api.getpostman.com/collections/${currentCollection.uid}`,
-      headers: {
-        'X-Api-Key': process.env.POSTMAN_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      data: { collection: { info: { name: nextVersionName } } }
-    });
-    console.log('Renamed current collection to:', nextVersionName);
-
-    // Create new "Pinterest REST API latest" collection
-    console.log('Reading collection file: ./postman/collection.json');
-    const fileContent = fs.readFileSync('./postman/collection.json', 'utf8');
-    console.log('File size:', fileContent.length, 'bytes');
+    console.log('Successfully renamed existing collection');
     
-    const newCollectionData = JSON.parse(fileContent);
-    console.log('Original collection structure:', {
-      hasInfo: !!newCollectionData.info,
-      hasSchema: !!newCollectionData.info?.schema,
-      hasItems: !!newCollectionData.item,
-      topLevelKeys: Object.keys(newCollectionData)
-    });
+    // Step 2: Create new "latest" collection from OpenAPI conversion
+    // Read the converted collection file from the OpenAPI conversion step
+    const convertedCollectionPath = './postman/collection.json';
     
-    // Ensure proper Postman collection structure
-    if (!newCollectionData.info) {
-      newCollectionData.info = {};
+    console.log('Reading converted collection from OpenAPI...');
+    const convertedCollectionData = JSON.parse(await fs.readFile(convertedCollectionPath, 'utf8'));
+    
+    // Ensure the new collection has the correct name
+    if (!convertedCollectionData.info) {
+      convertedCollectionData.info = {};
     }
-    newCollectionData.info.name = 'Pinterest REST API (latest)';
+    convertedCollectionData.info.name = 'Pinterest REST API (latest)';
     
-    // Ensure required schema property
-    if (!newCollectionData.info.schema) {
-      newCollectionData.info.schema = 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json';
+    // Ensure it has the required schema
+    if (!convertedCollectionData.info.schema) {
+      convertedCollectionData.info.schema = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
     }
     
-    // Ensure required item property (array of requests/folders)
-    if (!newCollectionData.item) {
-      newCollectionData.item = [];
-    }
+    console.log('Creating new "latest" collection from OpenAPI conversion...');
+    const newLatestCollection = await createCollection(convertedCollectionData);
     
-    console.log('Final collection structure:', {
-      hasInfo: !!newCollectionData.info,
-      hasSchema: !!newCollectionData.info.schema,
-      hasItems: !!newCollectionData.item,
-      itemCount: newCollectionData.item?.length || 0,
-      name: newCollectionData.info.name
-    });
+    console.log(`Successfully created new latest collection: ${newLatestCollection.name} (UID: ${newLatestCollection.uid})`);
+    console.log(`\nSummary:`);
+    console.log(`- Renamed existing "latest" to "${versionedName}"`);
+    console.log(`- Created new "latest" from OpenAPI conversion`);
+    console.log(`- New latest collection UID: ${newLatestCollection.uid}`);
     
-    const createResponse = await axios({
-      method: 'post',
-      url: 'https://api.getpostman.com/collections',
-      headers: {
-        'X-Api-Key': process.env.POSTMAN_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      data: { collection: newCollectionData }
-    });
-
-    console.log('Created new "Pinterest REST API (latest)" collection');
-    console.log('New collection UID:', createResponse.data.collection.uid);
-    console.log('✅ Process complete! The "Pinterest REST API (latest)" collection is now ready for future updates.');
-    console.log('Note: COLLECTION_UID secret can remain unchanged - script will always find "Pinterest REST API (latest)" by name.');
+    // Output the new UID for potential use in subsequent workflow steps
+    console.log(`::set-output name=new_collection_uid::${newLatestCollection.uid}`);
     
   } catch (error) {
     console.error('Error:', error.response?.data || error.message);
@@ -123,4 +159,4 @@ async function versionCollection() {
   }
 }
 
-versionCollection();
+main();
