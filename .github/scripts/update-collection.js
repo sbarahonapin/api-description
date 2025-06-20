@@ -19,6 +19,20 @@ async function getCollections() {
   }
 }
 
+async function getCollection(uid) {
+  try {
+    const response = await axios.get(`${POSTMAN_API_BASE}/collections/${uid}`, {
+      headers: {
+        'X-API-Key': POSTMAN_API_KEY
+      }
+    });
+    return response.data.collection;
+  } catch (error) {
+    console.error('Error fetching collection:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
 async function updateCollection(uid, updateData) {
   try {
     const response = await axios.put(`${POSTMAN_API_BASE}/collections/${uid}`, {
@@ -86,8 +100,9 @@ function getNextVersion(collections) {
     return '1.0.0';
   }
   
-  // Increment patch version
-  highestVersion.patch += 1;
+  // Increment minor version and reset patch to 0
+  highestVersion.minor += 1;
+  highestVersion.patch = 0;
   
   return `${highestVersion.major}.${highestVersion.minor}.${highestVersion.patch}`;
 }
@@ -116,11 +131,18 @@ async function main() {
     
     // Step 1: Rename the existing "latest" collection to versioned name
     console.log(`Renaming "${latestCollection.name}" to "${versionedName}"...`);
-    await updateCollection(COLLECTION_UID, {
-      info: {
-        name: versionedName
-      }
-    });
+    
+    // First, get the full collection data
+    const fullCollectionData = await getCollection(COLLECTION_UID);
+    
+    // Update the name in the collection data
+    fullCollectionData.info.name = versionedName;
+    
+    // Remove uid and id as they shouldn't be in update payload
+    delete fullCollectionData.uid;
+    delete fullCollectionData.id;
+    
+    await updateCollection(COLLECTION_UID, fullCollectionData);
     console.log('Successfully renamed existing collection');
     
     // Step 2: Create new "latest" collection from OpenAPI conversion
