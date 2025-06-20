@@ -115,13 +115,18 @@ async function main() {
     const collections = await getCollections();
     console.log('Found collections:', collections.map(c => c.name));
     
-    // Find the current "latest" collection
-    const latestCollection = collections.find(c => c.uid === COLLECTION_UID);
+    // Find the current "latest" collection by name first, fallback to UID
+    let latestCollection = collections.find(c => c.name === 'Pinterest REST API (latest)');
+    
     if (!latestCollection) {
-      throw new Error(`Collection with UID ${COLLECTION_UID} not found`);
+      console.log('Collection "Pinterest REST API (latest)" not found by name, trying by UID...');
+      latestCollection = collections.find(c => c.uid === COLLECTION_UID);
+      if (!latestCollection) {
+        throw new Error(`Collection not found by name "Pinterest REST API (latest)" or by UID ${COLLECTION_UID}`);
+      }
     }
     
-    console.log(`Current collection: ${latestCollection.name} (UID: ${COLLECTION_UID})`);
+    console.log(`Current collection: ${latestCollection.name} (UID: ${latestCollection.uid})`);
     
     // Calculate next version
     const nextVersion = getNextVersion(collections);
@@ -133,7 +138,7 @@ async function main() {
     console.log(`Renaming "${latestCollection.name}" to "${versionedName}"...`);
     
     // First, get the full collection data
-    const fullCollectionData = await getCollection(COLLECTION_UID);
+    const fullCollectionData = await getCollection(latestCollection.uid);
     
     // Update the name in the collection data
     fullCollectionData.info.name = versionedName;
@@ -142,7 +147,7 @@ async function main() {
     delete fullCollectionData.uid;
     delete fullCollectionData.id;
     
-    await updateCollection(COLLECTION_UID, fullCollectionData);
+    await updateCollection(latestCollection.uid, fullCollectionData);
     console.log('Successfully renamed existing collection');
     
     // Step 2: Create new "latest" collection from OpenAPI conversion
