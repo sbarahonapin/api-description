@@ -85,22 +85,18 @@ function getNextVersion(collections) {
   collections.forEach(collection => {
     const version = extractVersion(collection.name);
     if (version) {
-      const versionNumber = version.major * 10000 + version.minor * 100 + version.patch;
-      const highestNumber = highestVersion ? 
-        highestVersion.major * 10000 + highestVersion.minor * 100 + highestVersion.patch : 0;
+      const versionString = `${version.major}.${version.minor}.${version.patch}`;
+      const highestString = highestVersion ? 
+        `${highestVersion.major}.${highestVersion.minor}.${highestVersion.patch}` : '0.0.0';
       
-      if (versionNumber > highestNumber) {
+      if (versionString > highestString) {
         highestVersion = version;
       }
     }
   });
   
-  // If no version found, start with 1.0.0
-  if (!highestVersion) {
-    return '1.0.0';
-  }
+  if (!highestVersion) return '1.0.0';
   
-  // Increment minor version and reset patch to 0
   highestVersion.minor += 1;
   highestVersion.patch = 0;
   
@@ -134,51 +130,54 @@ async function main() {
     
     console.log(`Next version: ${versionedName}`);
     
-    // Step 1: Rename the existing "latest" collection to versioned name
-    console.log(`Renaming "${latestCollection.name}" to "${versionedName}"...`);
+    // Step 1: Get the current content of the "latest" collection
+    console.log('Fetching current "latest" collection content...');
+    const currentLatestContent = await getCollection(latestCollection.uid);
     
-    // First, get the full collection data
-    const fullCollectionData = await getCollection(latestCollection.uid);
+    // Step 2: Create a new versioned collection with the current content
+    console.log(`Creating versioned collection "${versionedName}" with current content...`);
+    const versionedCollectionData = {
+      ...currentLatestContent,
+      info: {
+        ...currentLatestContent.info,
+        name: versionedName
+      }
+    };
     
-    // Update the name in the collection data
-    fullCollectionData.info.name = versionedName;
+    // Remove uid and id as they shouldn't be in create payload
+    delete versionedCollectionData.uid;
+    delete versionedCollectionData.id;
     
-    // Remove uid and id as they shouldn't be in update payload
-    delete fullCollectionData.uid;
-    delete fullCollectionData.id;
+    const versionedCollection = await createCollection(versionedCollectionData);
+    console.log(`Successfully created versioned collection: ${versionedCollection.name} (UID: ${versionedCollection.uid})`);
     
-    await updateCollection(latestCollection.uid, fullCollectionData);
-    console.log('Successfully renamed existing collection');
-    
-    // Step 2: Create new "latest" collection from OpenAPI conversion
-    // Read the converted collection file from the OpenAPI conversion step
-    const convertedCollectionPath = './postman/collection.json';
-    
+    // Step 3: Update the "latest" collection with the new OpenAPI conversion
     console.log('Reading converted collection from OpenAPI...');
+    const convertedCollectionPath = './postman/collection.json';
     const convertedCollectionData = JSON.parse(await fs.readFile(convertedCollectionPath, 'utf8'));
     
-    // Ensure the new collection has the correct name
+    // Ensure the converted collection has the correct name and schema
     if (!convertedCollectionData.info) {
       convertedCollectionData.info = {};
     }
     convertedCollectionData.info.name = 'Pinterest REST API (latest)';
     
-    // Ensure it has the required schema
     if (!convertedCollectionData.info.schema) {
       convertedCollectionData.info.schema = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
     }
     
-    console.log('Creating new "latest" collection from OpenAPI conversion...');
-    const newLatestCollection = await createCollection(convertedCollectionData);
+    // Remove uid and id from the converted data
+    delete convertedCollectionData.uid;
+    delete convertedCollectionData.id;
     
-    console.log(`Successfully created new latest collection: ${newLatestCollection.name} (UID: ${newLatestCollection.uid})`);
+    console.log('Updating "latest" collection with OpenAPI conversion...');
+    await updateCollection(latestCollection.uid, convertedCollectionData);
+    
+    console.log(`Successfully updated "latest" collection with new content`);
     console.log(`\nSummary:`);
-    console.log(`- Renamed existing "latest" to "${versionedName}"`);
-    console.log(`- Created new "latest" from OpenAPI conversion`);
-    console.log(`- New latest collection UID: ${newLatestCollection.uid}`);
-    
-    // Output the new UID for potential use in subsequent workflow steps
-    console.log(`::set-output name=new_collection_uid::${newLatestCollection.uid}`);
+    console.log(`- Created versioned snapshot: "${versionedName}" (UID: ${versionedCollection.uid})`);
+    console.log(`- Updated "latest" collection with OpenAPI conversion (UID: ${latestCollection.uid})`);
+    console.log(`- "Latest" collection UID remains: ${latestCollection.uid}`);
     
   } catch (error) {
     console.error('Error:', error.response?.data || error.message);
