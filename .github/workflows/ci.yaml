@@ -2,7 +2,6 @@ name: Transform OpenAPI to Postman Collection
 
 on:
   push:
-    branches: [ main ]
     paths:
       - 'v5/openapi.yaml'
       - 'v5/openapi.json'
