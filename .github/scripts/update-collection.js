@@ -82,9 +82,27 @@ async function getCollection(uid) {
 
 async function updateCollection(uid, updateData) {
   try {
-    const response = await axios.put(`${POSTMAN_API_BASE}/collections/${uid}`, {
+    console.log('updateCollection called with:');
+    console.log(`  UID: ${uid}`);
+    console.log(`  Update data type: ${typeof updateData}`);
+    console.log(`  Update data keys: ${updateData ? Object.keys(updateData) : 'null/undefined'}`);
+    
+    if (!uid) {
+      throw new Error('Collection UID is required but was not provided');
+    }
+    
+    if (!updateData || typeof updateData !== 'object') {
+      throw new Error('Update data is required and must be an object');
+    }
+    
+    const payload = {
       collection: updateData
-    }, {
+    };
+    
+    console.log(`  Payload structure: ${Object.keys(payload)}`);
+    console.log(`  Collection data in payload: ${payload.collection ? 'present' : 'missing'}`);
+    
+    const response = await axios.put(`${POSTMAN_API_BASE}/collections/${uid}`, payload, {
       headers: {
         'X-API-Key': POSTMAN_API_KEY,
         'Content-Type': 'application/json'
@@ -170,31 +188,54 @@ async function getNextVersion() {
 async function main() {
   try {
     console.log('Starting collection versioning process...');
+    console.log('Environment variables:');
+    console.log(`  POSTMAN_API_KEY: ${POSTMAN_API_KEY ? '[SET]' : '[NOT SET]'}`);
+    console.log(`  COLLECTION_UID: ${COLLECTION_UID || '[NOT SET]'}`);
+    console.log(`  WORKSPACE_NAME: ${WORKSPACE_NAME}`);
     
     // Get all workspaces and find target workspace
+    console.log('\nFetching workspaces...');
     const workspaces = await getWorkspaces();
+    console.log(`Found ${workspaces.length} workspaces:`, workspaces.map(w => `${w.name} (${w.id})`));
+    
     const targetWorkspace = workspaces.find(w => w.name === WORKSPACE_NAME);
     if (!targetWorkspace) {
       throw new Error(`Workspace "${WORKSPACE_NAME}" not found`);
     }
+    console.log(`Target workspace found: ${targetWorkspace.name} (ID: ${targetWorkspace.id})`);
     
     // Get collections from Pinterest Collections workspace
+    console.log('\nFetching collections from workspace...');
     const collections = await getCollections();
-    console.log(`Found ${collections.length} collections in "${WORKSPACE_NAME}" workspace:`, collections.map(c => c.name));
+    console.log(`Found ${collections.length} collections in "${WORKSPACE_NAME}" workspace:`);
+    collections.forEach(c => {
+      console.log(`  - Name: "${c.name}", UID: ${c.uid}`);
+    });
     
     // Find the target collection - try by UID first (primary method), then by name as fallback
+    console.log(`\nLooking for collection with UID: ${COLLECTION_UID}`);
     let latestCollection = collections.find(c => c.uid === COLLECTION_UID);
     
     if (!latestCollection) {
       console.log(`Collection with UID ${COLLECTION_UID} not found, searching by name "Pinterest REST API (latest)"...`);
       latestCollection = collections.find(c => c.name === 'Pinterest REST API (latest)');
       if (!latestCollection) {
+        console.log('Available collection names:');
+        collections.forEach(c => console.log(`  - "${c.name}"`));
         throw new Error(`Collection not found by UID ${COLLECTION_UID} or by name "Pinterest REST API (latest)"`);
       }
-      console.log(`Tip: Update COLLECTION_UID to: ${latestCollection.uid}`);
+      console.log(`Found by name! UID: ${latestCollection.uid}`);
+      console.log(`Tip: Update COLLECTION_UID environment variable to: ${latestCollection.uid}`);
     }
     
-    console.log(`Found collection: ${latestCollection.name} (UID: ${latestCollection.uid})`);
+    console.log(`\nTarget collection found:`);
+    console.log(`  Name: ${latestCollection.name}`);
+    console.log(`  UID: ${latestCollection.uid}`);
+    
+    // Validate that we have a valid UID
+    if (!latestCollection.uid) {
+      throw new Error('Collection UID is undefined or null');
+    }
     
     // Calculate next version from GitHub releases
     const nextVersion = await getNextVersion();
@@ -224,17 +265,22 @@ async function main() {
     console.log(`Created snapshot: ${versionedCollection.name}`);
     
     // Step 3: Update the "latest" collection with the new OpenAPI conversion
+    console.log('\nStep 3: Updating latest collection...');
     console.log('Loading OpenAPI conversion...');
     const convertedCollectionPath = './postman/collection.json';
     
     // Check if the converted collection file exists
     try {
-      await fs.access(convertedCollectionPath);
+      await fs.promises.access(convertedCollectionPath);
+      console.log(`✓ Converted collection file found at ${convertedCollectionPath}`);
     } catch (error) {
       throw new Error(`Converted collection file not found at ${convertedCollectionPath}. Make sure the OpenAPI conversion step has run successfully.`);
     }
     
-    const convertedCollectionData = JSON.parse(await fs.readFile(convertedCollectionPath, 'utf8'));
+    const convertedCollectionData = JSON.parse(await fs.promises.readFile(convertedCollectionPath, 'utf8'));
+    console.log('Converted collection loaded successfully');
+    console.log(`  Original name: ${convertedCollectionData.info?.name || '[NO NAME]'}`);
+    console.log(`  Item count: ${convertedCollectionData.item?.length || 0}`);
     
     // Ensure the converted collection has the correct name
     if (!convertedCollectionData.info) {
@@ -246,8 +292,18 @@ async function main() {
     delete convertedCollectionData.uid;
     delete convertedCollectionData.id;
     
+    console.log('Collection data prepared for update:');
+    console.log(`  Target UID: ${latestCollection.uid}`);
+    console.log(`  New name: ${convertedCollectionData.info.name}`);
+    console.log(`  Data keys: ${Object.keys(convertedCollectionData)}`);
+    
+    // Validate data before sending
+    if (!convertedCollectionData || Object.keys(convertedCollectionData).length === 0) {
+      throw new Error('Converted collection data is empty or invalid');
+    }
+    
     console.log('Updating "latest" collection with fresh API specs...');
-    await updateCollection(latestCollection.uid, convertedCollectionData);
+    const updateResult = await updateCollection(latestCollection.uid, convertedCollectionData);
     
     console.log('\n✓ Success!:');
     console.log(`  - Created backup: "${versionedName}"`);
@@ -255,11 +311,18 @@ async function main() {
     console.log(`  - Collection UID stayed the same: ${latestCollection.uid}`);
     
     console.log('Collection updated successfully');
-    console.log('Response:', JSON.stringify(response.data, null, 2));
+    console.log('Update result:', JSON.stringify(updateResult, null, 2));
   } catch (error) {
     console.error('Update failed:', error.response?.data || error.message);
+    if (error.config) {
+      console.error('Request config:');
+      console.error(`  URL: ${error.config.url}`);
+      console.error(`  Method: ${error.config.method}`);
+      console.error(`  Data: ${error.config.data}`);
+    }
     process.exit(1);
   }
 }
 
-updateCollection();
+// Fix the function call at the end
+main();
