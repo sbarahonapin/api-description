@@ -1,5 +1,5 @@
 const axios = require('axios');
-const fs = require('fs');
+const fs = require('fs').promises;
 
 const POSTMAN_API_KEY = process.env.POSTMAN_API_KEY;
 const COLLECTION_UID = process.env.COLLECTION_UID;
@@ -81,10 +81,20 @@ async function getCollection(uid) {
 }
 
 async function updateCollection(uid, updateData) {
-  try {
-    const response = await axios.put(`${POSTMAN_API_BASE}/collections/${uid}`, {
+  try {    
+    if (!uid) {
+      throw new Error('Collection UID is required but was not provided');
+    }
+    
+    if (!updateData || typeof updateData !== 'object') {
+      throw new Error('Update data is required and must be an object');
+    }
+    
+    const payload = {
       collection: updateData
-    }, {
+    };
+    
+    const response = await axios.put(`${POSTMAN_API_BASE}/collections/${uid}`, payload, {
       headers: {
         'X-API-Key': POSTMAN_API_KEY,
         'Content-Type': 'application/json'
@@ -145,7 +155,7 @@ function parseVersion(versionString) {
   return null;
 }
 
-async function getNextVersion() {
+async function getCurrentReleaseVersion() {
   try {
     const latestRelease = await getLatestGitHubRelease();
     console.log(`Latest GitHub release: ${latestRelease}`);
@@ -155,13 +165,10 @@ async function getNextVersion() {
       throw new Error(`Could not parse version from GitHub release: ${latestRelease}`);
     }
     
-    // Increment minor version
-    version.minor += 1;
-    version.patch = 0;
-    
+    // Return the current version without incrementing
     return `${version.major}.${version.minor}.${version.patch}`;
   } catch (error) {
-    console.error('Error getting next version from GitHub:', error.message);
+    console.error('Error getting current version from GitHub:', error.message);
     console.log('Falling back to default version 1.0.0');
     return '1.0.0';
   }
@@ -189,30 +196,39 @@ async function main() {
       console.log(`Collection with UID ${COLLECTION_UID} not found, searching by name "Pinterest REST API (latest)"...`);
       latestCollection = collections.find(c => c.name === 'Pinterest REST API (latest)');
       if (!latestCollection) {
+        collections.forEach(c => console.log(`  - "${c.name}"`));
         throw new Error(`Collection not found by UID ${COLLECTION_UID} or by name "Pinterest REST API (latest)"`);
       }
-      console.log(`Tip: Update COLLECTION_UID to: ${latestCollection.uid}`);
     }
     
-    console.log(`Found collection: ${latestCollection.name} (UID: ${latestCollection.uid})`);
+    // Validate that we have a valid UID
+    if (!latestCollection.uid) {
+      throw new Error('Collection UID is undefined or null');
+    }
     
-    // Calculate next version from GitHub releases
-    const nextVersion = await getNextVersion();
-    const versionedName = `Pinterest REST API ${nextVersion}`;
+    // Use current version from GitHub releases
+    const currentVersion = await getCurrentReleaseVersion();
+    const versionedName = `Pinterest REST API ${currentVersion}`;
     
-    console.log(`Next version will be: ${versionedName}`);
+    console.log(`Current version will be: ${versionedName}`);
     
     // Step 1: Get the current content of the "latest" collection
     console.log('Getting current collection content...');
     const currentLatestContent = await getCollection(latestCollection.uid);
     
     // Step 2: Create a new versioned collection with the current content
-    console.log(`Creating snapshot: "${versionedName}"...`);
     const versionedCollectionData = {
       ...currentLatestContent,
       info: {
         ...currentLatestContent.info,
-        name: versionedName
+        name: versionedName,
+        // Update description to include the version
+        description: currentLatestContent.info.description 
+          ? currentLatestContent.info.description.replace(
+              "Pinterest's REST API", 
+              `Pinterest's REST API (${currentVersion})`
+            )
+          : `Pinterest's REST API (${currentVersion})`
       }
     };
     
@@ -224,7 +240,7 @@ async function main() {
     console.log(`Created snapshot: ${versionedCollection.name}`);
     
     // Step 3: Update the "latest" collection with the new OpenAPI conversion
-    console.log('Loading OpenAPI conversion...');
+    console.log('\nStep 3: Updating latest collection...');
     const convertedCollectionPath = './postman/collection.json';
     
     // Check if the converted collection file exists
@@ -235,7 +251,8 @@ async function main() {
     }
     
     const convertedCollectionData = JSON.parse(await fs.readFile(convertedCollectionPath, 'utf8'));
-    
+    console.log('Converted collection loaded successfully');
+
     // Ensure the converted collection has the correct name
     if (!convertedCollectionData.info) {
       convertedCollectionData.info = {};
@@ -245,21 +262,23 @@ async function main() {
     // Remove uid and id from the converted data
     delete convertedCollectionData.uid;
     delete convertedCollectionData.id;
+  
+    // Validate data before sending
+    if (!convertedCollectionData || Object.keys(convertedCollectionData).length === 0) {
+      throw new Error('Converted collection data is empty or invalid');
+    }
     
     console.log('Updating "latest" collection with fresh API specs...');
-    await updateCollection(latestCollection.uid, convertedCollectionData);
+    const updateResult = await updateCollection(latestCollection.uid, convertedCollectionData);
     
     console.log('\n✓ Success!:');
     console.log(`  - Created backup: "${versionedName}"`);
     console.log(`  - Updated "latest" with new OpenAPI specs`);
-    console.log(`  - Collection UID stayed the same: ${latestCollection.uid}`);
-    
     console.log('Collection updated successfully');
-    console.log('Response:', JSON.stringify(response.data, null, 2));
   } catch (error) {
-    console.error('Update failed:', error.response?.data || error.message);
+    console.error('Error:', error.response?.data || error.message);
     process.exit(1);
   }
 }
 
-updateCollection();
+main();
