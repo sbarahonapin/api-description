@@ -6,7 +6,7 @@ on:
     paths:
       - 'v5/openapi.yaml'
       - 'v5/openapi.json'
-
+  workflow_dispatch:
 
 jobs:
   sync-to-postman:
@@ -45,8 +45,17 @@ jobs:
           openapi2postmanv2 \
             -s ./v5/openapi.yaml \
             -o ./postman/collection.json \
-            -p \
-            --pretty
+            -p
+
+      - name: Verify Converted Collection
+        run: |
+          if [ -f ./postman/collection.json ]; then
+            echo "✓ Collection file created"
+            wc -l ./postman/collection.json
+          else
+            echo "✗ Collection file NOT found!"
+            exit 1
+          fi
 
       - name: Update Postman Collection
         env:
