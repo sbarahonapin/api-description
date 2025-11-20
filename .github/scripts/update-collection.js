@@ -1,5 +1,5 @@
 const axios = require('axios');
-const fs = require('fs');
+const fs = require('fs/promises');
 
 const POSTMAN_API_KEY = process.env.POSTMAN_API_KEY;
 const COLLECTION_UID = process.env.COLLECTION_UID;
@@ -220,20 +220,19 @@ async function main() {
     delete versionedCollectionData.uid;
     delete versionedCollectionData.id;
     
-    const versionedCollection = await createCollection(versionedCollectionData, targetWorkspace.id);
+  const versionedCollection = await createCollection(versionedCollectionData, targetWorkspace.id);
     console.log(`Created snapshot: ${versionedCollection.name}`);
     
     // Step 3: Update the "latest" collection with the new OpenAPI conversion
     console.log('Loading OpenAPI conversion...');
-    const convertedCollectionPath = './postman/collection.json';
-    
-    // Check if the converted collection file exists
+  const convertedCollectionPath = './postman/collection.json';
+
     try {
       await fs.access(convertedCollectionPath);
     } catch (error) {
       throw new Error(`Converted collection file not found at ${convertedCollectionPath}. Make sure the OpenAPI conversion step has run successfully.`);
     }
-    
+
     const convertedCollectionData = JSON.parse(await fs.readFile(convertedCollectionPath, 'utf8'));
     
     // Ensure the converted collection has the correct name
@@ -246,8 +245,8 @@ async function main() {
     delete convertedCollectionData.uid;
     delete convertedCollectionData.id;
     
-    console.log('Updating "latest" collection with fresh API specs...');
-    await updateCollection(latestCollection.uid, convertedCollectionData);
+  console.log('Updating "latest" collection with fresh API specs...');
+  const updatedCollection = await updateCollection(latestCollection.uid, convertedCollectionData);
     
     console.log('\n✓ Success!:');
     console.log(`  - Created backup: "${versionedName}"`);
@@ -255,11 +254,11 @@ async function main() {
     console.log(`  - Collection UID stayed the same: ${latestCollection.uid}`);
     
     console.log('Collection updated successfully');
-    console.log('Response:', JSON.stringify(response.data, null, 2));
+    console.log('Response:', JSON.stringify(updatedCollection, null, 2));
   } catch (error) {
     console.error('Update failed:', error.response?.data || error.message);
     process.exit(1);
   }
 }
 
-updateCollection();
+main();

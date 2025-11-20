@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "version": "5.15.0",
-    "title": "Pinterest REST API",
+    "title": "Pinterest REST API TEST",
     "description": "Pinterest's REST API",
     "contact": {
       "name": "Pinterest, Inc.",
